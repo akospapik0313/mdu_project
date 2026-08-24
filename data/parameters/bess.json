@@ -1,0 +1,11 @@
+{
+    "power_kw": 1000.0,
+    "energy_kwh": 3000.0,
+    "soc_min": 0.05,
+    "soc_max": 0.95,
+    "soc_initial": 0.05,
+    "soc_final": 0.05,
+    "charge_efficiency": 0.95,
+    "discharge_efficiency": 0.95,
+    "degradation_cost_eur_per_kwh": 0.01
+}

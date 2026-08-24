@@ -1,0 +1,10 @@
+{
+    "company_ev": {
+        "energy_per_vehicle_kwh": 150.0,
+        "max_power_per_vehicle_kw": 100.0,
+        "unserved_penalty_eur_per_kwh": 100.0
+    },
+    "logistics": {
+        "critical_unserved_penalty_eur_per_kwh": 10000.0
+    }
+}

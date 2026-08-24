@@ -1,0 +1,54 @@
+{
+    "loading_operation": {
+        "description": "Truck loading or unloading operation.",
+        "aliases": [
+            "loading operation",
+            "loading",
+            "truck loading",
+            "truck unloading",
+            "dock loading",
+            "rakodas",
+            "kamion rakodas"
+        ],
+        "power_kw": 40.0
+    },
+    "sorting_operation": {
+        "description": "Warehouse sorting operation.",
+        "aliases": [
+            "sorting operation",
+            "sorting",
+            "sorting line",
+            "sorting lines",
+            "sortation",
+            "valogatas",
+            "szortirozas"
+        ],
+        "power_kw": 45.0
+    },
+    "forklift_charging": {
+        "description": "Warehouse forklift charging operation.",
+        "aliases": [
+            "forklift charging",
+            "charge forklifts",
+            "forklift chargers",
+            "forklifts charging",
+            "targonca toltes",
+            "targoncak toltese"
+        ],
+        "power_kw": 30.0
+    },
+    "cold_storage_event": {
+        "description": "Additional cold-storage or refrigeration operation.",
+        "aliases": [
+            "cold storage event",
+            "cold storage",
+            "refrigeration event",
+            "refrigeration",
+            "cold zone",
+            "cold zones",
+            "hutohaz",
+            "hutesi esemeny"
+        ],
+        "power_kw": 35.0
+    }
+}

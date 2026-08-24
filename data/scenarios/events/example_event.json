@@ -1,0 +1,16 @@
+{
+    "events": [
+        {
+            "event_type": "company_ev_charging",
+            "vehicles": 10,
+            "arrival_time": "2026-07-31T13:00:00+02:00",
+            "departure_time": "2026-07-31T18:00:00+02:00"
+        },
+        {
+            "event_type": "logistics_load",
+            "start_time": "2026-07-31T14:00:00+02:00",
+            "end_time": "2026-07-31T16:00:00+02:00",
+            "power_kw": 600
+        }
+    ]
+}

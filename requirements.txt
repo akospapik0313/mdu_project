@@ -1,0 +1,34 @@
+# MDU Operational AI Agent
+# Python 3.12 recommended
+#
+# Direct project dependencies only.
+# Transitive dependencies are resolved automatically by pip.
+
+# Core data processing
+numpy>=1.26,<3.0
+pandas>=2.2,<3.0
+scipy>=1.13,<2.0
+python-dateutil>=2.9,<3.0
+tzdata>=2024.1
+
+# Excel input / output
+openpyxl>=3.1,<4.0
+
+# Forecasting and hyperparameter optimization
+scikit-learn>=1.5,<2.0
+xgboost>=2.1,<4.0
+optuna>=4.0,<5.0
+
+# Mathematical optimization
+cvxpy>=1.6,<2.0
+highspy>=1.7,<2.0
+
+# Visualization
+matplotlib>=3.8,<4.0
+
+# Local LLM / LM Studio integration
+requests>=2.31,<3.0
+python-dotenv>=1.0,<2.0
+
+# Testing
+pytest>=8.0,<9.0

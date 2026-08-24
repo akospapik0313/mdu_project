@@ -1,0 +1,7 @@
+{
+    "grid_import_limit_kw": 2000.0,
+    "grid_export_limit_kw": 1000.0,
+    "dt_hours": 0.25,
+    "dam_price_unit": "EUR/MWh",
+    "da_gate_closure_local_time": "12:00"
+}

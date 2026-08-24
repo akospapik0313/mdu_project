@@ -1,0 +1,19 @@
+{
+    "day": "2026-07-31",
+    "as_of": "2026-07-31T12:30:00+02:00",
+    "events": [
+        {
+            "event_type": "company_ev_charging",
+            "vehicles": 200,
+            "arrival_time": "2026-07-31T18:00:00+02:00",
+            "departure_time": "2026-07-31T22:00:00+02:00",
+            "energy_per_vehicle_kwh": 150.0,
+            "max_power_per_vehicle_kw": 100.0,
+            "total_energy_required_kwh": 30000.0,
+            "total_max_power_kw": 20000.0,
+            "priority": "flexible",
+            "flexible": true,
+            "source": "llm_event"
+        }
+    ]
+}
