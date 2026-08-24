@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import argparse
 import json
-import subprocess
-import sys
 from pathlib import Path
 
+import matplotlib.dates as mdates
+import matplotlib.pyplot as plt
 import pandas as pd
 
 from src.agent.event_handler import (
@@ -1683,6 +1683,433 @@ def print_operation_results(
             )
 
 
+
+# ============================================================
+# RESCHEDULED VISUALIZATION
+# ============================================================
+
+def setup_rescheduled_time_axis(ax):
+    ax.xaxis.set_major_locator(
+        mdates.HourLocator(
+            interval=2
+        )
+    )
+
+    ax.xaxis.set_major_formatter(
+        mdates.DateFormatter(
+            "%H:%M",
+            tz=TIMEZONE,
+        )
+    )
+
+    ax.grid(
+        True,
+        alpha=0.25,
+    )
+
+
+def plot_rescheduled_schedule(
+    schedule_path,
+    day,
+    market_stage,
+):
+    df = pd.read_excel(
+        schedule_path,
+        sheet_name="schedule",
+    )
+
+    if "timestamp_utc" in df.columns:
+
+        df["timestamp_utc"] = pd.to_datetime(
+            df["timestamp_utc"],
+            utc=True,
+        )
+
+        df["timestamp"] = (
+            df["timestamp_utc"]
+            .dt.tz_convert(
+                TIMEZONE
+            )
+        )
+
+        df = (
+            df
+            .sort_values(
+                "timestamp_utc"
+            )
+            .reset_index(
+                drop=True
+            )
+        )
+
+    else:
+
+        df["timestamp"] = pd.to_datetime(
+            df["timestamp"]
+        )
+
+        df = (
+            df
+            .sort_values(
+                "timestamp"
+            )
+            .reset_index(
+                drop=True
+            )
+        )
+
+    # --------------------------------------------------------
+    # Current physical load
+    # --------------------------------------------------------
+
+    if "effective_load_kw" in df.columns:
+
+        consumption_kw = pd.to_numeric(
+            df["effective_load_kw"],
+            errors="coerce",
+        )
+
+    else:
+
+        consumption_kw = pd.to_numeric(
+            df["load_forecast_kw"],
+            errors="coerce",
+        )
+
+        if "logistics_event_kw" in df.columns:
+
+            consumption_kw = (
+                consumption_kw
+                +
+                pd.to_numeric(
+                    df["logistics_event_kw"],
+                    errors="coerce",
+                ).fillna(0.0)
+            )
+
+        if "company_ev_kw" in df.columns:
+
+            consumption_kw = (
+                consumption_kw
+                +
+                pd.to_numeric(
+                    df["company_ev_kw"],
+                    errors="coerce",
+                ).fillna(0.0)
+            )
+
+    pv_kw = pd.to_numeric(
+        df["pv_forecast_kw"],
+        errors="coerce",
+    )
+
+    dam_price = pd.to_numeric(
+        df["dam_price_forecast"],
+        errors="coerce",
+    )
+
+    charge_kw = pd.to_numeric(
+        df["bess_charge_kw"],
+        errors="coerce",
+    )
+
+    discharge_kw = pd.to_numeric(
+        df["bess_discharge_kw"],
+        errors="coerce",
+    )
+
+    soc_percent = pd.to_numeric(
+        df["bess_soc_percent"],
+        errors="coerce",
+    )
+
+    grid_net_kw = pd.to_numeric(
+        df["grid_net_kw"],
+        errors="coerce",
+    )
+
+    net_before_bess_kw = (
+        consumption_kw
+        -
+        pv_kw
+    )
+
+    ts = df["timestamp"]
+
+    market_stage = (
+        str(
+            market_stage
+        )
+        .strip()
+        .upper()
+    )
+
+    is_id = (
+        market_stage
+        ==
+        "ID"
+    )
+
+    # ========================================================
+    # OUTPUT PATH / TITLE
+    # ========================================================
+
+    if is_id:
+
+        output_dir = (
+            DATA_DIR
+            / "output_data"
+            / "plots"
+            / "rescheduled"
+            / "id"
+        )
+
+        output_path = (
+            output_dir
+            / f"id_rescheduled_plot_{day}.png"
+        )
+
+        figure_title = (
+            "MDU Energy Community - "
+            f"Intraday Rescheduled Schedule - {day}"
+        )
+
+    else:
+
+        output_dir = (
+            DATA_DIR
+            / "output_data"
+            / "plots"
+            / "rescheduled"
+            / "da"
+        )
+
+        output_path = (
+            output_dir
+            / f"da_rescheduled_plot_{day}.png"
+        )
+
+        figure_title = (
+            "MDU Energy Community - "
+            f"Day-Ahead Rescheduled Schedule - {day}"
+        )
+
+    output_dir.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    # ========================================================
+    # FIGURE
+    # ========================================================
+
+    fig, axes = plt.subplots(
+        6,
+        1,
+        figsize=(16, 16),
+        sharex=True,
+    )
+
+    ax1, ax2, ax3, ax4, ax5, ax6 = axes
+
+    # ========================================================
+    # 1. EXPECTED LOAD
+    # ========================================================
+
+    ax1.step(
+        ts,
+        consumption_kw,
+        where="post",
+        linewidth=2.0,
+        label="Expected load",
+    )
+
+    ax1.set_ylabel("kW")
+    ax1.set_title("Expected Load")
+    ax1.legend(loc="upper left")
+    setup_rescheduled_time_axis(ax1)
+
+    # ========================================================
+    # 2. EXPECTED PV
+    # ========================================================
+
+    ax2.step(
+        ts,
+        pv_kw,
+        where="post",
+        linewidth=2.0,
+        label="Forecast PV",
+    )
+
+    ax2.set_ylabel("kW")
+    ax2.set_title("Expected PV Generation")
+    ax2.legend(loc="upper left")
+    setup_rescheduled_time_axis(ax2)
+
+    # ========================================================
+    # 3. MARKET PRICES
+    # ========================================================
+
+    ax3.step(
+        ts,
+        dam_price,
+        where="post",
+        linewidth=2.0,
+        linestyle="--" if is_id else "-",
+        label="DAM price",
+    )
+
+    if (
+        is_id
+        and
+        "id_vwap_eur_mwh" in df.columns
+    ):
+
+        id_price = pd.to_numeric(
+            df["id_vwap_eur_mwh"],
+            errors="coerce",
+        )
+
+        ax3.step(
+            ts,
+            id_price,
+            where="post",
+            linewidth=2.0,
+            label="ID VWAP",
+        )
+
+        ax3.set_title(
+            "Forecasted Day-Ahead and Intraday Market Prices"
+        )
+
+    else:
+
+        ax3.set_title(
+            "Forecasted Day-Ahead Market Price"
+        )
+
+    ax3.set_ylabel("EUR/MWh")
+    ax3.legend(loc="upper left")
+    setup_rescheduled_time_axis(ax3)
+
+    # ========================================================
+    # 4. BESS CHARGE / DISCHARGE
+    # ========================================================
+
+    ax4.step(
+        ts,
+        charge_kw,
+        where="post",
+        linewidth=2.0,
+        label="Charge",
+    )
+
+    ax4.step(
+        ts,
+        -discharge_kw,
+        where="post",
+        linewidth=2.0,
+        label="Discharge",
+    )
+
+    ax4.axhline(
+        0,
+        linewidth=0.8,
+    )
+
+    ax4.set_ylabel("kW")
+    ax4.set_title("BESS Charge / Discharge")
+    ax4.legend(loc="upper left")
+    setup_rescheduled_time_axis(ax4)
+
+    # ========================================================
+    # 5. STATE OF CHARGE
+    # ========================================================
+
+    ax5.step(
+        ts,
+        soc_percent,
+        where="post",
+        linewidth=2.0,
+        label="SOC",
+    )
+
+    ax5.set_ylabel("%")
+    ax5.set_ylim(0, 100)
+    ax5.set_title("State of Charge (SOC)")
+    ax5.legend(loc="upper left")
+    setup_rescheduled_time_axis(ax5)
+
+    # ========================================================
+    # 6. RESULTING NET GRID POWER
+    # ========================================================
+
+    ax6.step(
+        ts,
+        net_before_bess_kw,
+        where="post",
+        linewidth=2.0,
+        linestyle="--",
+        label="Net load before BESS",
+    )
+
+    ax6.step(
+        ts,
+        grid_net_kw,
+        where="post",
+        linewidth=2.2,
+        label="Resulting grid load",
+    )
+
+    ax6.axhline(
+        0,
+        linewidth=0.8,
+    )
+
+    ax6.set_ylabel("kW")
+    ax6.set_title("Resulting Net Grid Power")
+    ax6.legend(loc="upper left")
+    setup_rescheduled_time_axis(ax6)
+
+    ax6.set_xlabel(
+        "Local Time (Europe/Stockholm)"
+    )
+
+    # ========================================================
+    # TITLE
+    # ========================================================
+
+    fig.suptitle(
+        figure_title,
+        fontsize=16,
+        fontweight="bold",
+    )
+
+    # Intentionally no subtitle / energy summary.
+    fig.tight_layout(
+        rect=[
+            0,
+            0,
+            1,
+            0.97,
+        ]
+    )
+
+    # ========================================================
+    # SAVE
+    # ========================================================
+
+    fig.savefig(
+        output_path,
+        dpi=200,
+        bbox_inches="tight",
+    )
+
+    plt.close(fig)
+
+    return output_path
+
+
 # ============================================================
 # MAIN
 # ============================================================
@@ -2066,24 +2493,15 @@ def main():
         "============================================================"
     )
 
-    subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "src.visualization.plot_rescheduled",
-            "--schedule-file",
-            str(
-                schedule_path
-            ),
-            "--day",
-            args.day,
-            "--as-of",
-            args.as_of,
-            "--stage",
-            market_stage,
-        ],
-        check=True,
-        cwd=PROJECT_ROOT,
+    plot_path = plot_rescheduled_schedule(
+        schedule_path=schedule_path,
+        day=args.day,
+        market_stage=market_stage,
+    )
+
+    print(
+        f"\nRescheduled visualization saved:\n"
+        f"{plot_path}"
     )
 
     # ========================================================

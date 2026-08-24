@@ -1,302 +1,320 @@
 from __future__ import annotations
 
-import argparse
-import subprocess
-import sys
-import time
+from pathlib import Path
+from typing import Iterable
+
+import matplotlib.pyplot as plt
+import pandas as pd
 
 
 # ============================================================
-# CLI
+# COLUMN HELPERS
 # ============================================================
 
-def str_to_bool(value):
-    value = str(value).lower()
+def _find_first_existing_column(
+    df: pd.DataFrame,
+    candidates: Iterable[str],
+    required: bool = False,
+    label: str = "column",
+) -> str | None:
+    for col in candidates:
+        if col in df.columns:
+            return col
 
-    if value in {
-        "true",
-        "1",
-        "yes",
-        "y",
-    }:
-        return True
-
-    if value in {
-        "false",
-        "0",
-        "no",
-        "n",
-    }:
-        return False
-
-    raise argparse.ArgumentTypeError(
-        "Expected true or false."
-    )
-
-
-def parse_args():
-    parser = argparse.ArgumentParser(
-        description=(
-            "Run complete day-ahead forecasting, "
-            "BESS optimization and visualization pipeline."
+    if required:
+        raise KeyError(
+            f"Could not find required {label}. Tried: {list(candidates)}"
         )
-    )
 
-    parser.add_argument(
-        "--day",
+    return None
+
+
+def _get_timestamp_column(df: pd.DataFrame) -> str:
+    return _find_first_existing_column(
+        df,
+        ["timestamp", "datetime", "date", "time"],
         required=True,
-        type=str,
-        help="Delivery day, e.g. 2026-07-07",
+        label="timestamp column",
     )
 
-    parser.add_argument(
-        "--hpo",
-        default=False,
-        type=str_to_bool,
-        help=(
-            "Run Optuna HPO for forecasting models: "
-            "true/false"
-        ),
-    )
 
-    return parser.parse_args()
+def _ensure_datetime_index(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+
+    ts_col = _get_timestamp_column(df)
+    df[ts_col] = pd.to_datetime(df[ts_col])
+
+    df = df.sort_values(ts_col).reset_index(drop=True)
+    return df
 
 
-# ============================================================
-# COMMAND RUNNER
-# ============================================================
+def load_schedule(path: str | Path) -> pd.DataFrame:
+    path = Path(path)
 
-def run_step(
-    title,
-    command,
-):
-    print(
-        "\n"
-        + "=" * 60
-    )
+    if not path.exists():
+        raise FileNotFoundError(f"Schedule file not found: {path}")
 
-    print(
-        title
-    )
+    suffix = path.suffix.lower()
 
-    print(
-        "=" * 60
-    )
-
-    print(
-        "\nCommand:"
-    )
-
-    print(
-        " ".join(command)
-    )
-
-    start = time.time()
-
-    result = subprocess.run(
-        command,
-        check=False,
-    )
-
-    elapsed = (
-        time.time()
-        - start
-    )
-
-    if result.returncode != 0:
-
-        raise RuntimeError(
-            f"\nPipeline stopped.\n"
-            f"Failed step: {title}\n"
-            f"Return code: {result.returncode}"
+    if suffix in [".xlsx", ".xls"]:
+        df = pd.read_excel(path)
+    elif suffix == ".parquet":
+        df = pd.read_parquet(path)
+    elif suffix == ".csv":
+        df = pd.read_csv(path)
+    else:
+        raise ValueError(
+            f"Unsupported file format: {path.suffix}"
         )
 
-    print(
-        f"\nCompleted in "
-        f"{elapsed:.1f} seconds."
-    )
+    return _ensure_datetime_index(df)
 
 
 # ============================================================
-# MAIN
+# DATA EXTRACTION
 # ============================================================
 
-def main():
-    args = parse_args()
+def _extract_series(df: pd.DataFrame) -> dict[str, pd.Series | None]:
+    ts_col = _get_timestamp_column(df)
 
-    day = args.day
-
-    hpo = (
-        "true"
-        if args.hpo
-        else "false"
-    )
-
-    python = sys.executable
-
-    pipeline_start = time.time()
-
-    print(
-        "\n"
-        + "=" * 60
-    )
-
-    print(
-        "MDU ENERGY COMMUNITY - DAY-AHEAD PIPELINE"
-    )
-
-    print(
-        "=" * 60
-    )
-
-    print(
-        f"\nDelivery day: {day}"
-    )
-
-    print(
-        f"HPO:          {hpo}"
-    )
-
-    # ========================================================
-    # 1. LOAD FORECAST
-    # ========================================================
-
-    run_step(
-        title="1/5 LOAD FORECAST",
-        command=[
-            python,
-            "-m",
-            "src.forecasting.load_forecast",
-            "--day",
-            day,
-            "--hpo",
-            hpo,
+    load_col = _find_first_existing_column(
+        df,
+        [
+            "load_forecast_kw",
+            "portfolio_load_kw",
+            "expected_load_kw",
+            "load_kw",
+            "load",
         ],
     )
 
-    # ========================================================
-    # 2. PV FORECAST
-    # ========================================================
-
-    run_step(
-        title="2/5 PV FORECAST",
-        command=[
-            python,
-            "-m",
-            "src.forecasting.pv_forecast",
-            "--day",
-            day,
-            "--hpo",
-            hpo,
+    pv_col = _find_first_existing_column(
+        df,
+        [
+            "pv_forecast_kw",
+            "pv_power_kw",
+            "pv_generation_kw",
+            "pv_kw",
+            "pv",
         ],
     )
 
-    # ========================================================
-    # 3. DAM PRICE FORECAST
-    # ========================================================
-
-    run_step(
-        title="3/5 DAM PRICE FORECAST",
-        command=[
-            python,
-            "-m",
-            "src.forecasting.dam_forecast",
-            "--day",
-            day,
-            "--hpo",
-            hpo,
+    dam_price_col = _find_first_existing_column(
+        df,
+        [
+            "dam_price_forecast_eur_mwh",
+            "dam_price_eur_mwh",
+            "dam_price",
+            "price_eur_mwh",
         ],
     )
 
-    # ========================================================
-    # 4. DAY-AHEAD BESS OPTIMIZATION
-    # ========================================================
-
-    run_step(
-        title="4/5 DAY-AHEAD BESS OPTIMIZATION",
-        command=[
-            python,
-            "-m",
-            "src.optimization.da_optimizer",
-            "--day",
-            day,
+    charge_col = _find_first_existing_column(
+        df,
+        [
+            "battery_charge_kw",
+            "bess_charge_kw",
+            "charge_kw",
         ],
     )
 
-    # ========================================================
-    # 5. VISUALIZATION
-    # ========================================================
-
-    run_step(
-        title="5/5 DAY-AHEAD VISUALIZATION",
-        command=[
-            python,
-            "-m",
-            "src.visualization.plot_da",
-            "--day",
-            day,
+    discharge_col = _find_first_existing_column(
+        df,
+        [
+            "battery_discharge_kw",
+            "bess_discharge_kw",
+            "discharge_kw",
         ],
     )
 
-    # ========================================================
-    # COMPLETE
-    # ========================================================
-
-    total_elapsed = (
-        time.time()
-        - pipeline_start
+    soc_col = _find_first_existing_column(
+        df,
+        [
+            "soc_pct",
+            "battery_soc_pct",
+            "bess_soc_pct",
+        ],
     )
 
-    print(
-        "\n"
-        + "=" * 60
+    grid_import_col = _find_first_existing_column(
+        df,
+        [
+            "grid_import_kw",
+            "import_kw",
+        ],
     )
 
-    print(
-        "DAY-AHEAD PIPELINE COMPLETE"
+    grid_export_col = _find_first_existing_column(
+        df,
+        [
+            "grid_export_kw",
+            "export_kw",
+        ],
     )
 
-    print(
-        "=" * 60
+    net_grid_col = _find_first_existing_column(
+        df,
+        [
+            "net_grid_kw",
+            "resulting_grid_kw",
+            "grid_net_kw",
+            "grid_power_kw",
+        ],
     )
 
-    print(
-        f"\nDelivery day: {day}"
+    if net_grid_col is not None:
+        net_grid = df[net_grid_col]
+    elif grid_import_col is not None or grid_export_col is not None:
+        net_grid = (
+            (df[grid_import_col] if grid_import_col else 0.0)
+            - (df[grid_export_col] if grid_export_col else 0.0)
+        )
+    else:
+        net_grid = None
+
+    return {
+        "timestamp": df[ts_col],
+        "load": df[load_col] if load_col else None,
+        "pv": df[pv_col] if pv_col else None,
+        "dam_price": df[dam_price_col] if dam_price_col else None,
+        "charge": df[charge_col] if charge_col else None,
+        "discharge": df[discharge_col] if discharge_col else None,
+        "soc": df[soc_col] if soc_col else None,
+        "net_grid": net_grid,
+    }
+
+
+# ============================================================
+# PLOTTING
+# ============================================================
+
+def plot_da_schedule(
+    schedule_path: str | Path,
+    output_path: str | Path | None = None,
+) -> Path:
+    df = load_schedule(schedule_path)
+    s = _extract_series(df)
+
+    ts = s["timestamp"]
+
+    if output_path is None:
+        day_str = pd.to_datetime(ts.iloc[0]).strftime("%Y-%m-%d")
+        output_path = Path(
+            f"data/output_data/plots/da/da_plot_{day_str}.png"
+        )
+
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    fig, axes = plt.subplots(
+        6,
+        1,
+        figsize=(16, 18),
+        sharex=True,
+        constrained_layout=True,
     )
 
-    print(
-        f"Total runtime: "
-        f"{total_elapsed:.1f} seconds"
+    day_str = pd.to_datetime(ts.iloc[0]).strftime("%Y-%m-%d")
+    fig.suptitle(
+        f"Day-Ahead Schedule - {day_str}",
+        fontsize=16,
+        fontweight="bold",
     )
 
-    print(
-        "\nGenerated outputs:"
+    # 1) Forecasted load
+    ax = axes[0]
+    if s["load"] is not None:
+        ax.plot(ts, s["load"], linewidth=1.8, label="Forecasted load")
+        ax.legend(loc="upper right")
+    ax.set_ylabel("kW")
+    ax.set_title("Forecasted Load")
+    ax.grid(True, alpha=0.3)
+
+    # 2) Forecasted PV
+    ax = axes[1]
+    if s["pv"] is not None:
+        ax.plot(ts, s["pv"], linewidth=1.8, label="Forecasted PV generation")
+        ax.legend(loc="upper right")
+    ax.set_ylabel("kW")
+    ax.set_title("Forecasted PV Generation")
+    ax.grid(True, alpha=0.3)
+
+    # 3) DAM price
+    ax = axes[2]
+    if s["dam_price"] is not None:
+        ax.plot(ts, s["dam_price"], linewidth=1.8, label="DAM price")
+        ax.legend(loc="upper right")
+    ax.set_ylabel("EUR/MWh")
+    ax.set_title("Day-Ahead Market Price")
+    ax.grid(True, alpha=0.3)
+
+    # 4) Battery charge / discharge
+    ax = axes[3]
+    has_handles = False
+    if s["charge"] is not None:
+        ax.step(ts, s["charge"], where="mid", label="Battery charge")
+        has_handles = True
+    if s["discharge"] is not None:
+        ax.step(ts, -s["discharge"], where="mid", label="Battery discharge")
+        has_handles = True
+    ax.axhline(0.0, linewidth=1.0)
+    ax.set_ylabel("kW")
+    ax.set_title("Battery Charge / Discharge")
+    if has_handles:
+        ax.legend(loc="upper right")
+    ax.grid(True, alpha=0.3)
+
+    # 5) SOC
+    ax = axes[4]
+    if s["soc"] is not None:
+        ax.plot(ts, s["soc"], linewidth=1.8, label="SOC")
+        ax.legend(loc="upper right")
+    ax.set_ylabel("%")
+    ax.set_title("State of Charge")
+    ax.grid(True, alpha=0.3)
+
+    # 6) Resulting net grid
+    ax = axes[5]
+    if s["net_grid"] is not None:
+        ax.plot(ts, s["net_grid"], linewidth=1.8, label="Net grid power")
+        ax.axhline(0.0, linewidth=1.0)
+        ax.legend(loc="upper right")
+    ax.set_ylabel("kW")
+    ax.set_title("Resulting Net Grid Power")
+    ax.set_xlabel("Time")
+    ax.grid(True, alpha=0.3)
+
+    fig.savefig(output_path, dpi=160, bbox_inches="tight")
+    plt.close(fig)
+
+    return output_path
+
+
+def main() -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--schedule-path",
+        required=True,
+        help="Path to the DA schedule file.",
+    )
+    parser.add_argument(
+        "--output-path",
+        default=None,
+        help="Optional output PNG path.",
+    )
+    args = parser.parse_args()
+
+    saved = plot_da_schedule(
+        schedule_path=args.schedule_path,
+        output_path=args.output_path,
     )
 
-    print(
-        f"  data/output_data/forecast/load/"
-        f"load_forecast_{day}.xlsx"
-    )
-
-    print(
-        f"  data/output_data/forecast/pv/"
-        f"pv_forecast_{day}.xlsx"
-    )
-
-    print(
-        f"  data/output_data/forecast/dam/"
-        f"dam_forecast_{day}.xlsx"
-    )
-
-    print(
-        f"  data/output_data/schedules/da/"
-        f"da_schedule_{day}.xlsx"
-    )
-
-    print(
-        f"  data/output_data/plots/da/"
-        f"da_plot_{day}.png"
-    )
+    print("\n============================================================")
+    print("DAY-AHEAD VISUALIZATION")
+    print("============================================================")
+    print(f"\nPlot saved:\n{saved}")
 
 
 if __name__ == "__main__":
